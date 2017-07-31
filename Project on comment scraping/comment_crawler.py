@@ -1,254 +1,224 @@
-# CS122: Course Search Engine Part 1
+# Assignment: Open Data Policies comments scrape
 
-import re
-import util
 import bs4
 import queue
 import json
 import sys
 import csv
 import urllib
+import collections
+import pandas as pd
+import distance
+import jellyfish
+import sys
+#nltk.download()
 
-INDEX_IGNORE = set(['a',  'also',  'an',  'and',  'are', 'as',  'at',  'be',
-                    'but',  'by',  'course',  'for',  'from',  'how', 'i',
-                    'ii',  'iii',  'in',  'include',  'is',  'not',  'of',
-                    'on',  'or',  's',  'sequence',  'so',  'social',  'students',
-                    'such',  'that',  'the',  'their',  'this',  'through',  'to',
-                    'topics',  'units', 'we', 'were', 'which', 'will', 'with', 'yet'])
+#from nltk.sentiment.vader import SentimentIntensityAnalyzer
+#from nltk import tokenize
+#from textblob import TextBlob
+#from textblob import TextBlob
+#textblob.download()
 
-#starting_url = "http://www.classes.cs.uchicago.edu/archive/2015/winter/12200-1/new.collegecatalog.uchicago.edu/index.html"
+
+
+
+starting_urls_list = ["https://mymadison.io/documents/city-of-buffalo-open-data-policy", 
+                      "https://mymadison.io/documents/durham-open-data-policy",
+                      "https://mymadison.io/documents/city-of-tyler-data-policy",
+                      "https://mymadison.io/documents/city-of-glendale-draft-open-data-resolution",
+                      "https://mymadison.io/documents/metro-nashville-government-open-data-policy",
+                      "https://mymadison.io/documents/city-of-syracuse-open-data-policy",
+                      "https://mymadison.io/documents/napervilleopendatapolicy",
+                      "https://mymadison.io/documents/bart-open-data-policy",
+                      "https://mymadison.io/documents/san-francisco-open-data-legislation-2014"]
+
 starting_url = "https://mymadison.io/documents/city-of-buffalo-open-data-policy?comment_page=1"
-limiting_domain = "classes.cs.uchicago.edu"
-#starting_url = "http://mymadison.io/"
 
 
+'''
+AUXILLARY FUNCTIONS
+'''
 
 def simple_crawl(starting_url):
     '''
-    Scrapes the valid urls from a starting url.
+    Scrapes the full webpage from a starting url.
 
     Inputs:
         starting_url: string
     Returns:
-        List of url's that have been crawled through
+        a soup object
     '''    
     page = urllib.request.urlopen(starting_url)
     if page is not None:
-        soup = bs4.BeautifulSoup(page, "lxml")
-        #print(soup)
+        soup = bs4.BeautifulSoup(page, "html")
+        return soup
 
-        commentators = soup.find_all("div", class_="media-body media-middle")
-        print(commentators)
-
-
-
-    '''
-
-    html = util.get_request(starting_url)
-    #check1 = set()
-    #filtered_url_list = []
-
-    if html is not None:
-        text = util.read_request(html)
-        print(text)
-        soup = bs4.BeautifulSoup(text, "lxml")
-    '''
-    '''
-        tag_list = soup.find_all("a")
-
-        # get a list of clean urls
-        for link1 in tag_list:
-            initial_url = link1.get('href')
-            if initial_url is not None:
-                if util.is_absolute_url(initial_url) == False:
-                    if "#" in initial_url:
-                        initial_url = util.remove_fragment(initial_url)
-                    initial_url = util.convert_if_relative_url(starting_url, initial_url)
-
-                if initial_url is not None:   
-                     if (util.is_url_ok_to_follow(initial_url, limiting_domain)) and (initial_url not in check1):
-                        check1.add(initial_url)
-                        filtered_url_list.append(initial_url)
-
-        return filtered_url_list
-        '''
-        #print(soup)
+def comment_id(comment):
+    comment_id = comment.get('id')
+    return comment_id
 
 
-def get_indexer(starting_url, num_pages_to_visit, course_map):
-    '''
-    Obtains course names from a specified url
+def name(comment):
+    name_date = comment.find("div", class_="media-body media-middle")
+    name = name_date.find("span")
+    name_final = name.string.strip()
+    return name_final, name_date
 
-    Inputs:
-        url: string
-    Returns:
-        indexer: dictionary
-    '''
+def datetime(comment):
+    name_date = name(comment)[1]
+    time = name_date.find("time")
+    datetime_final = time.get("datetime")[:-6]
+    datetime_final_1 = datetime_final.replace("T", " ")
+    return datetime_final_1
 
-    links_list = get_links(starting_url)
+def likes_count(comment):
+    name_date = name(comment)[1]
+    likes = name_date.find("span", class_="action-count")
+    return likes.string.strip()
 
-    q = queue.Queue()
-    check_set = set()
-    check_set.add(links_list[0])
-    for urls in links_list:
-        check_set.add(urls)
-    visited_list_url = []
-
-    for link2 in links_list:
-        q.put(link2)
-
-    indexer = {}
-
-    # using while loop to crawl into pages
-    while (len(visited_list_url) < num_pages_to_visit) and q.qsize() != 0:
-        first_out = q.get()
-        if first_out is not None:
-            first_out_request = util.get_request(first_out)
-            if first_out_request is not None:
-                first_out_https = util.get_request_url(first_out_request)
-                if util.is_url_ok_to_follow(first_out_https, limiting_domain):
-                    if first_out_https is not None and first_out_https not in visited_list_url:
-                        visited_list_url.append(first_out_https)
-                        get_course_names(first_out_request, indexer, course_map)
-                        new_links = get_links(first_out_https)
-                        for link3 in new_links:
-                            if link3 not in check_set:
-                                q.put(link3)
-                                check_set.add(link3)
-
-    return indexer
+def quoted_comment(comment):
+    comments = comment.find("div", class_="comment-content")
+    quoted_comment = comments.find("blockquote")
+    if quoted_comment is not None:
+        quoted_comment_final = quoted_comment.text.strip()
+        return quoted_comment_final, comments
+    else:
+        return None, comments
 
 
-def index_adding(indexer, complete_words_list, course_code, course_map):
-    '''
-    Auxiliary function that adds words to the index
-
-    Inputs:
-        indexer: dictionary
-        complete_words_list: list_rows
-        course_code: integer
-        course_map: JSON
-    '''
-
-    for word in complete_words_list:
-        if word not in indexer and word not in INDEX_IGNORE and course_code in course_map:
-            indexer[word] = []
-            indexer[word].append(course_map[course_code])
-        else:
-            if word not in INDEX_IGNORE and course_code in course_map and course_map[course_code] not in indexer[word]:
-                indexer[word].append(course_map[course_code])
-
-
-def regular_expression(tag):
-    '''
-    Auxiliary function that filters words.
-
-    Inputs:
-        tag: list
-    Returns:
-        Tuple
-    '''
-
-    words = tag[0].text.split()
-    course_code = words[0] + " " + words[1].replace(".","")
+def actual_comment(comment):
+    comments = comment.find("div", class_="comment-content")
+    actual_comments = comments.find_all("p", recursive=False)
     
-    words_indexer_title = re.findall(r'[a-zA-Z][a-zA-Z0-9]*', tag[1].text.lower())
-    words_indexer_desc = re.findall(r'[a-zA-Z][a-zA-Z0-9]*', tag[2].text.lower())
+    complete_str_aux = ''
+    complete_str_str = ''
     
-    complete_words_list = words_indexer_title + words_indexer_desc
+    for child in actual_comments:
+        complete_str_aux += str(child)
+        complete_str_str += str(child.text)
+    return complete_str_aux, complete_str_str
 
-    return (complete_words_list, course_code)
 
-
-def get_course_names(https, indexer, course_map):
-    '''
-    Obtains course names from a specified url
-
-    Inputs:
-        https: string
-        indexer: dictionary
-        course_map: JSON 
-    Returns:
-        indexer: dictionary
-    '''
-
-    text = util.read_request(https)
-    soup = bs4.BeautifulSoup(text, "lxml")
-    tag_list = soup.find_all("div", class_= "courseblock main")
+def reply_ids(comment):
     
-    if tag_list != {}:
-        for tag in tag_list:
+    replies = comment.find_all("div", class_="comment")
+    if replies is not None:
+        reply_id_list = []
+        for reply in replies:
+            reply_id=reply.get('id')
+            reply_id_list.append(reply_id)
 
-            # check if the tag is a sequence
-            if util.find_sequence(tag):
-                tag_seq_child = tag.findChildren()
-                words_and_coursecode = regular_expression(tag_seq_child)
-                tag_bro = tag.nextSibling
+        return reply_id_list
+    else:
+        return []
 
-                # check if the tag is subsequence and index in all the subsequences
-                while util.is_subsequence(tag_bro):
-                    tag_seq_seq_child = tag_bro.findChildren()
-                    words_and_coursecode_seq = regular_expression(tag_seq_seq_child)
-                    complete_words_list_2 = words_and_coursecode[0] + words_and_coursecode_seq[0]
-                    index_adding(indexer, complete_words_list_2, words_and_coursecode_seq[1], course_map)
-                    tag_bro = tag_bro.nextSibling
-            else:
-                tag_child = tag.findChildren()
-                words_and_coursecode_non_seq = regular_expression(tag_child)
-                index_adding(indexer, words_and_coursecode_non_seq[0], words_and_coursecode_non_seq[1], course_map)
+
+def find_total_num_pages(starting_url):
+    soup = simple_crawl(starting_url)
+    next_page = soup.find_all("ul", class_="pagination")
+    
+    for page in next_page:
+        pages = page.find_all("a")
+        total_num_pages = pages[-2].get("href")
+        return int(total_num_pages[-1])
+
+
+def calling_functions(commentators, comments_dictionary, comment_number):
+    
+    for comment in commentators:
+        
+        comment_id_f = comment_id(comment)
+        name_f =  name(comment)
+        timedate_f = datetime(comment)
+        likes_count_f = likes_count(comment)
+        quoted_comment_f = quoted_comment(comment)
+        actual_comment_f, actual_comment_str =  actual_comment(comment)
+        reply_ids_f = reply_ids(comment)
+
+
+        comments_dictionary[comment_number] = [comment_id_f,name_f[0], timedate_f, 
+                                      likes_count_f, quoted_comment_f[0],
+                                       actual_comment_str, actual_comment_f, reply_ids_f]
+        comment_number += 1
+    
+    return comments_dictionary, comment_number
 
 
 '''
-def go(num_pages_to_crawl, course_map_filename, index_filename):
-    
-    Crawl the college catalog and generates a CSV file with an index.
-
-    Inputs:
-        num_pages_to_crawl: the number of pages to process during the crawl
-        course_map_filename: the name of a JSON file that contains the mapping
-          course codes to course identifiers
-        index_filename: the name for the CSV of the index.
-
-    Outputs: 
-        CSV file of the index index.
-    
-
-    with open(course_map_filename) as json_data:
-            course_map = json.load(json_data)
-
-    list_rows = []
-
-    get_indexer_1 = get_indexer(starting_url, num_pages_to_crawl, course_map)
-
-    out = csv.writer(open(index_filename,"w"))
-
-    # presenting the right output into the CSV file
-    for key, value in get_indexer_1.items():
-        for course_identifier in value:
-            identifier_string = '|'.join([str(course_identifier), key])
-            list_rows.append(identifier_string)
-
-    for row in list_rows:
-        out.writerow([row])
-
-
-
-if __name__ == "__main__":
-     usage = "python3 crawl.py <number of pages to crawl>"
-     args_len = len(sys.argv)
-     course_map_filename = "course_map.json"
-     index_filename = "catalog_index.csv"
-     if args_len == 1:
-         num_pages_to_crawl = 1000
-     elif args_len == 2:
-         try:
-             num_pages_to_crawl = int(sys.argv[1])
-         except ValueError:
-             print(usage)
-             sys.exit(0)
-     else:
-         print(usage)    
-         sys.exit(0)
-
-go(num_pages_to_crawl, course_map_filename, index_filename)
+Function to scrape a particular open data policy and put it into a dataframe.
 '''
+
+def scrape_all_pages(starting_url):
+    '''
+    This functions scrapes the required data from all the webpages for a PARTICULAR starting url of a Madison webpage.
+    '''
+    comments_dictionary = {}
+    num_pages_to_crawl = find_total_num_pages(starting_url)
+    
+    if num_pages_to_crawl is None:
+        num_pages_to_crawl = 1
+        
+    loop_number = 0
+    comment_number = 1
+
+    while loop_number < num_pages_to_crawl:
+    
+        soup = simple_crawl(starting_url)
+        commentators = soup.findAll("li", class_="comment floating-card")
+        
+        comments_dictionary, comment_number = calling_functions(commentators, comments_dictionary, comment_number)
+        
+        next_page = soup.find_all("ul", class_="pagination")
+        for page in next_page:
+            pages = page.find_all("a")
+            starting_url = pages[-1].get("href")
+        
+        loop_number += 1
+        
+    return comments_dictionary
+
+
+def convert_dict_pandas(comments_dictionary):
+    
+    df = pd.DataFrame(comments_dictionary)
+    df = df.transpose()
+    df.columns = ['comment_id', 'author', 'datetime', 'num_likes', 'quoted_text', 'comment_text', 'comment_text_aux', 'reply_ids']
+    
+    # converting str datetime into datetime pandas format
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    return df
+
+
+'''
+Function to scrape all the open data policies and put them into dataframes.
+'''
+
+all_cities_names = ['Buffalo', 'Durham', 'Tyler', 'Glendale', 'Nashville', 'Syracuse', 'Naperville', 'Bart', 'San Francisco']
+
+def go_all_madison_websites(starting_urls_list):
+    '''
+    This function scrapes the comments from all the Madison related webistes for cities that have
+    launched open data policies and converts them into pandas dataframe objects.
+    
+    Returns:
+        DataFrame object for each city's open data policy.
+    '''
+    i = 0
+    all_madison_websites_dfs = []
+    all_cities_dataframe = pd.DataFrame()
+    for starting_url in starting_urls_list:
+        #print(starting_url)
+        comments_dictionary = scrape_all_pages(starting_url)
+        get_dict_to_pandas = convert_dict_pandas(comments_dictionary)
+        #relative_url = starting_url.split('/')[-1]
+        get_dict_to_pandas['city_name'] = all_cities_names[i]
+        all_madison_websites_dfs.append((all_cities_names[i], get_dict_to_pandas))
+        all_cities_dataframe = all_cities_dataframe.append(get_dict_to_pandas)
+        i += 1
+        
+    return all_madison_websites_dfs, all_cities_dataframe
+
+
+
+
+
