@@ -1,5 +1,3 @@
-# Assignment: Open Data Policies comments scrape
-
 import bs4
 import queue
 import json
@@ -8,20 +6,10 @@ import csv
 import urllib
 import collections
 import pandas as pd
-import distance
-import jellyfish
 import sys
-#nltk.download()
-
-#from nltk.sentiment.vader import SentimentIntensityAnalyzer
-#from nltk import tokenize
-#from textblob import TextBlob
-#from textblob import TextBlob
-#textblob.download()
 
 
-
-
+# input variable
 starting_urls_list = ["https://mymadison.io/documents/city-of-buffalo-open-data-policy", 
                       "https://mymadison.io/documents/durham-open-data-policy",
                       "https://mymadison.io/documents/city-of-tyler-data-policy",
@@ -53,30 +41,49 @@ def simple_crawl(starting_url):
         soup = bs4.BeautifulSoup(page, "html")
         return soup
 
+
 def comment_id(comment):
+    '''
+    Scrapes the comment id of a comment.
+    '''
     comment_id = comment.get('id')
     return comment_id
 
 
 def name(comment):
+    '''
+    Scrapes the name of a commentator.
+    '''
     name_date = comment.find("div", class_="media-body media-middle")
     name = name_date.find("span")
     name_final = name.string.strip()
     return name_final, name_date
 
+
 def datetime(comment):
+    '''
+    Scrapes the datetime of a comment.
+    '''
     name_date = name(comment)[1]
     time = name_date.find("time")
     datetime_final = time.get("datetime")[:-6]
     datetime_final_1 = datetime_final.replace("T", " ")
     return datetime_final_1
 
+
 def likes_count(comment):
+    '''
+    Scrapes the number of likes on a comment.
+    '''
     name_date = name(comment)[1]
     likes = name_date.find("span", class_="action-count")
     return likes.string.strip()
 
+
 def quoted_comment(comment):
+    '''
+    Scrapes the quoted policy text the comment is referring to.
+    '''
     comments = comment.find("div", class_="comment-content")
     quoted_comment = comments.find("blockquote")
     if quoted_comment is not None:
@@ -87,8 +94,11 @@ def quoted_comment(comment):
 
 
 def actual_comment(comment):
+    '''
+    Scrapes the actual comment.
+    '''
     comments = comment.find("div", class_="comment-content")
-    actual_comments = comments.find_all("p", recursive=False)
+    actual_comments = comments.find_all({"p", "ol", "li"}, recursive=False)
     
     complete_str_aux = ''
     complete_str_str = ''
@@ -100,7 +110,9 @@ def actual_comment(comment):
 
 
 def reply_ids(comment):
-    
+    '''
+    Scrapes the quote the reply ID's of the comment.
+    '''
     replies = comment.find_all("div", class_="comment")
     if replies is not None:
         reply_id_list = []
@@ -113,7 +125,32 @@ def reply_ids(comment):
         return []
 
 
+def scrap_policy_text(starting_url):
+    '''
+    Scrapes the entire open data policy text of a particular city.
+    '''
+    soup = simple_crawl(starting_url)
+    policy_text = soup.find("section", id="page_content")
+    policy_text_final = policy_text.text.strip()
+    return policy_text_final
+
+
+def support_and_rejection(starting_url):
+    '''
+    Scrapes the count of support and rejection for each open data policy.
+    '''
+    soup = simple_crawl(starting_url)
+    thumbs_up = soup.find("i", class_="fa fa-thumbs-up")
+    thumbs_up_number = int(thumbs_up.nextSibling.nextSibling.text)
+    thumbs_down = soup.find("i", class_="fa fa-thumbs-down")
+    thumbs_down_number = int(thumbs_down.nextSibling.nextSibling.text)
+    return thumbs_up_number, thumbs_down_number
+
+
 def find_total_num_pages(starting_url):
+    '''
+    Scrapes the number of pages .
+    '''
     soup = simple_crawl(starting_url)
     next_page = soup.find_all("ul", class_="pagination")
     
@@ -124,6 +161,9 @@ def find_total_num_pages(starting_url):
 
 
 def calling_functions(commentators, comments_dictionary, comment_number):
+    '''
+    Calls the.
+    '''
     
     for comment in commentators:
         
@@ -144,13 +184,12 @@ def calling_functions(commentators, comments_dictionary, comment_number):
     return comments_dictionary, comment_number
 
 
-'''
-Function to scrape a particular open data policy and put it into a dataframe.
-'''
 
 def scrape_all_pages(starting_url):
     '''
-    This functions scrapes the required data from all the webpages for a PARTICULAR starting url of a Madison webpage.
+    This functions scrapes the required data from all the webpages for a PARTICULAR Madison website.
+
+    Returns: a dictionary of all comments of a particular open data policy.
     '''
     comments_dictionary = {}
     num_pages_to_crawl = find_total_num_pages(starting_url)
@@ -179,21 +218,21 @@ def scrape_all_pages(starting_url):
 
 
 def convert_dict_pandas(comments_dictionary):
-    
+    '''
+    Converts a dictionary of comments of a particular open data policy into a dataframe.
+    '''
     df = pd.DataFrame(comments_dictionary)
     df = df.transpose()
     df.columns = ['comment_id', 'author', 'datetime', 'num_likes', 'quoted_text', 'comment_text', 'comment_text_aux', 'reply_ids']
     
     # converting str datetime into datetime pandas format
     df['datetime'] = pd.to_datetime(df['datetime'])
+    df['reply_ids_count'] = df['reply_ids'].str.len()
     return df
 
 
-'''
-Function to scrape all the open data policies and put them into dataframes.
-'''
-
 all_cities_names = ['Buffalo', 'Durham', 'Tyler', 'Glendale', 'Nashville', 'Syracuse', 'Naperville', 'Bart', 'San Francisco']
+
 
 def go_all_madison_websites(starting_urls_list):
     '''
@@ -201,24 +240,29 @@ def go_all_madison_websites(starting_urls_list):
     launched open data policies and converts them into pandas dataframe objects.
     
     Returns:
-        DataFrame object for each city's open data policy.
+        DataFrame object for each city's open data policy, one dataframe that contains comments for all cities, and 
+        policy text of all cities in one string.
     '''
     i = 0
+    #all_policy_text = {}
+    policy_text_one_string_all_cities = ''
     all_madison_websites_dfs = []
     all_cities_dataframe = pd.DataFrame()
     for starting_url in starting_urls_list:
         #print(starting_url)
         comments_dictionary = scrape_all_pages(starting_url)
         get_dict_to_pandas = convert_dict_pandas(comments_dictionary)
-        #relative_url = starting_url.split('/')[-1]
+        policy_text = scrap_policy_text(starting_url)
+        policy_text_one_string_all_cities += policy_text
+        support_n_rejection = support_and_rejection(starting_url)
         get_dict_to_pandas['city_name'] = all_cities_names[i]
-        all_madison_websites_dfs.append((all_cities_names[i], get_dict_to_pandas))
+        all_madison_websites_dfs.append((all_cities_names[i], get_dict_to_pandas, policy_text, support_n_rejection))
         all_cities_dataframe = all_cities_dataframe.append(get_dict_to_pandas)
+
         i += 1
+
         
-    return all_madison_websites_dfs, all_cities_dataframe
-
-
+    return all_madison_websites_dfs, all_cities_dataframe, policy_text_one_string_all_cities
 
 
 
