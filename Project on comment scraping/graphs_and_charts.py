@@ -75,7 +75,7 @@ def line_graph(my_xticks, y1, y2, labels, city_name, type_text, line_graph_optio
     Display a graph that includes a ratio of policy text words to quoted text words.
     '''
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(7, 4))
     x = range(len(my_xticks))
     plt.title(city_name)
     plt.xticks(x, my_xticks, rotation=90)
@@ -84,7 +84,8 @@ def line_graph(my_xticks, y1, y2, labels, city_name, type_text, line_graph_optio
     if line_graph_option == "double_line_graph":
         plt.plot(x, y2, 'b')
     
-    plt.legend(labels, loc='best')
+    #plt.legend(labels, loc='best')
+    #ax.legend_.remove()
     plt.grid(True)
     plt.tight_layout()
     plt.show()

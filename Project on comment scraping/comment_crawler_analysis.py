@@ -34,7 +34,7 @@ def common_words_quoted_texts(type_of_text, city_name, city_dictionary, common_w
     good_words = [i for i in words if i not in stop] # stop words
     fdist = FreqDist(good_words)
     common_text_20 = fdist.most_common(common_words_limit)
-    df = pd.DataFrame(data=common_text_20, columns=['word', type_of_text + '_freq'])
+    df = pd.DataFrame(data=common_text_20, columns=['Word', type_of_text + '_freq'])
     if option == "both":
         plot = fdist.plot(common_words_limit, title=city_name)
         return df
@@ -55,7 +55,7 @@ def ratio_quoted_freq_with_policy_freq(line_graph_option, type_of_text, city_nam
 
     policy_text_tokenize = nltk.tokenize.word_tokenize(policy_text)
     df_word_count = common_words_quoted_texts(type_of_text, city_name, city_dictionary, common_words_limit, option)
-    df_quoted_popular_words = df_word_count['word'].tolist()
+    df_quoted_popular_words = df_word_count['Word'].tolist()
 
     # check to see if and count how many quoted/commented word comes up in the policy text
     if df_quoted_popular_words != []:
@@ -70,34 +70,35 @@ def ratio_quoted_freq_with_policy_freq(line_graph_option, type_of_text, city_nam
 
         # joining two dataframes (one with count of quoted/commented words and another with count of policy text words) on a key
         dict_to_pd = pd.DataFrame.from_dict(dict_quoted_freq_with_policy_freq, orient="index").reset_index()
-        dict_to_pd.columns = ['word', 'policy_text_freq']
-        dict_to_pd_2 = pd.merge(dict_to_pd, df_word_count, how='left', on=['word'])
+        dict_to_pd.columns = ['Word', 'Freq. in policy text']
+        dict_to_pd_2 = pd.merge(dict_to_pd, df_word_count, how='left', on=['Word'])
         type_of_text_update = type_of_text + '_freq'
-        dict_to_pd_2['ratio'] = dict_to_pd_2[type_of_text_update]/dict_to_pd_2['policy_text_freq']
+        dict_to_pd_2['Ratio'] = dict_to_pd_2[type_of_text_update]/dict_to_pd_2['Freq. in policy text']
+        dict_to_pd_2 = dict_to_pd_2[['Word', type_of_text_update, 'Freq. in policy text']]
         
         if sort_option == "descending":
-            dict_to_pd_2 = dict_to_pd_2.round(2).sort_values('ratio', ascending=False).reset_index().drop('index', axis=1)
+            dict_to_pd_2 = dict_to_pd_2.round(2).sort_values('Ratio', ascending=False).reset_index().drop('index', axis=1)
         elif sort_option == "ascending":
-            dict_to_pd_2 = dict_to_pd_2.round(2).sort_values('ratio', ascending=True).reset_index().drop('index', axis=1)
+            dict_to_pd_2 = dict_to_pd_2.round(2).sort_values('Ratio', ascending=True).reset_index().drop('index', axis=1)
 
         # option to produce either a graph with two variables (word frequency of both variables - policy text and quoted/commented text or a ratio of both) 
         #or one variable (a ratio of policy text vs. quoted/comment text)
-        my_xticks = dict_to_pd_2['word'].tolist()
+        my_xticks = dict_to_pd_2['Word'].tolist()
 
         if line_graph_option == "double_line_graph":
 
-            y1 = dict_to_pd_2['policy_text_freq'].tolist()
+            y1 = dict_to_pd_2['Freq. in policy text'].tolist()
             y2 = dict_to_pd_2[type_of_text_update].tolist()
             
             if type_of_text == "comment_text" and line_graph_option == "double_line_graph":
-                labels = ('policy text freq', 'comment text freq')
+                labels = ('Freq. in policy text', 'comment text freq')
             elif type_of_text == "quoted_text" and line_graph_option == "double_line_graph":
-                labels = ('policy text freq', 'quoted text freq')
+                labels = ('Freq. in policy text', 'quoted text freq')
             line_graph(my_xticks, y1, y2, labels, city_name, type_of_text, line_graph_option)
 
         elif line_graph_option == "single_line_graph":
 
-            y1 = dict_to_pd_2['ratio'].tolist()
+            y1 = dict_to_pd_2['Ratio'].tolist()
             labels = ('ratio',)
             line_graph(my_xticks, y1, None, labels, city_name, type_of_text, line_graph_option)
 
