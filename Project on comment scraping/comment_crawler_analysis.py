@@ -74,8 +74,16 @@ def ratio_quoted_freq_with_policy_freq(line_graph_option, type_of_text, city_nam
         dict_to_pd_2 = pd.merge(dict_to_pd, df_word_count, how='left', on=['Word'])
         type_of_text_update = type_of_text + '_freq'
         dict_to_pd_2['Ratio'] = dict_to_pd_2[type_of_text_update]/dict_to_pd_2['Freq. in policy text']
-        dict_to_pd_2 = dict_to_pd_2[['Word', type_of_text_update, 'Freq. in policy text']]
-        
+        #dict_to_pd_2 = dict_to_pd_2[['word', type_of_text_update, 'Freq. in policy text']]
+        #print(dict_to_pd_2)
+
+        if type_of_text == "quoted_text":
+            dict_to_pd_2.columns = ['Word', 'Freq. in policy text', 'Freq. in quoted text', 'Ratio']
+            dict_to_pd_2 = dict_to_pd_2[['Word', 'Freq. in quoted text', 'Freq. in policy text', 'Ratio']]
+        elif type_of_text == "comment_text":
+            dict_to_pd_2.columns = ['Word', 'Freq. in policy text', 'Freq. in comment text', 'Ratio']
+            dict_to_pd_2 = dict_to_pd_2[['Word', 'Freq. in comment text', 'Freq. in policy text', 'Ratio']]
+
         if sort_option == "descending":
             dict_to_pd_2 = dict_to_pd_2.round(2).sort_values('Ratio', ascending=False).reset_index().drop('index', axis=1)
         elif sort_option == "ascending":
@@ -102,6 +110,7 @@ def ratio_quoted_freq_with_policy_freq(line_graph_option, type_of_text, city_nam
             labels = ('ratio',)
             line_graph(my_xticks, y1, None, labels, city_name, type_of_text, line_graph_option)
 
+        dict_to_pd_2.index = np.arange(1, len(dict_to_pd_2) + 1)
         return dict_to_pd_2
 
 
